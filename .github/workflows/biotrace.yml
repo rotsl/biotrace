@@ -25,7 +25,7 @@ jobs:
           fail-on: error
           ai-enabled: "false"
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: biotrace-report
           path: ${{ steps.biotrace.outputs.report-path }}
