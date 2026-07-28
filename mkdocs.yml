@@ -1,0 +1,51 @@
+site_name: BioTrace
+site_description: Trace biological results from data and code to figures and scientific claims.
+site_url: https://rotsl.github.io/biotrace/
+repo_url: https://github.com/rotsl/biotrace
+repo_name: rotsl/biotrace
+edit_uri: ""
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: green
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: green
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+
+nav:
+  - Home: index.md
+  - Quick Start: quick-start.md
+  - Configuration Reference: configuration.md
+  - Labels Reference: labels.md
+  - Outputs & Inputs: outputs.md
+  - Security & Privacy: security.md
+  - Troubleshooting: troubleshooting.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight
+  - tables
+  - toc:
+      permalink: true
+
+plugins:
+  - search

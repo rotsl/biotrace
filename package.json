@@ -1,0 +1,53 @@
+{
+  "name": "biotrace",
+  "version": "1.0.0",
+  "description": "Trace biological results from data and code to figures and scientific claims",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "ncc build src/main.ts -o dist --minify",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "check-dist": "npm run build && git diff --exit-code -- dist",
+    "validate:schemas": "node scripts/validate-schemas.mjs",
+    "all": "npm run format:check && npm run lint && npm run typecheck && npm run test:coverage && npm run build && npm run check-dist"
+  },
+  "keywords": [
+    "github-action",
+    "bioinformatics",
+    "reproducibility",
+    "lineage",
+    "provenance"
+  ],
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@actions/core": "^1.10.1",
+    "@actions/github": "^6.0.0",
+    "js-yaml": "^5.2.2",
+    "zod": "^4.4.3"
+  },
+  "overrides": {
+    "undici": "^6.28.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.1.2",
+    "@vercel/ncc": "^0.44.1",
+    "@vitest/coverage-v8": "^4.1.10",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "eslint": "^10.8.0",
+    "globals": "^17.8.0",
+    "prettier": "^3.3.3",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^4.1.10"
+  }
+}

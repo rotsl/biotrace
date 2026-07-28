@@ -1,0 +1,17 @@
+name: BioTrace
+on: pull_request
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+jobs:
+  biotrace:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: rotsl/biotrace@v1
+        with:
+          config: .github/biotrace.yml
+          ai-enabled: "false"

@@ -1,0 +1,7 @@
+sample_id,condition,biological_replicate
+S1,control,1
+S2,control,2
+S3,control,3
+S4,treatment,1
+S5,treatment,2
+S6,treatment,3

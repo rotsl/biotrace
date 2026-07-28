@@ -1,0 +1,8 @@
+node_modules/
+lib/
+coverage/
+site/
+*.tgz
+.env
+.env.local
+INSTRUCTIONS.md

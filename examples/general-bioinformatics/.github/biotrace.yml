@@ -1,0 +1,27 @@
+version: 1
+
+repository:
+  analysis_types: [sequence-analysis]
+
+files:
+  metadata:
+    - path: data/sample_metadata.csv
+      required_columns: [sample_id, organism]
+      unique: [sample_id]
+
+  fasta:
+    - glob: "references/**/*.fa"
+      alphabet: dna
+      unique_ids: true
+      reject_empty_sequences: true
+      minimum_length: 50
+
+  fastq:
+    - glob: "data/**/*.fq"
+      alphabet: dna
+      reject_empty_sequences: true
+      maximum_records: 100000
+
+reproducibility:
+  require_environment: true
+  require_lockfile: false

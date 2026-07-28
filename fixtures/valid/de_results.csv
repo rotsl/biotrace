@@ -1,0 +1,4 @@
+gene,log2FoldChange,padj
+IL6,1.8,0.005
+TNF,2.1,0.003
+GAPDH,0.1,0.9

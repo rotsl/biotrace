@@ -1,0 +1,5 @@
+# Smoke-test configuration for the "BioTrace (self-test)" workflow.
+# This repository is the BioTrace tool itself, not a bioinformatics data
+# repository, so there is nothing meaningful to validate here beyond
+# confirming the Action runs end-to-end without error.
+version: 1

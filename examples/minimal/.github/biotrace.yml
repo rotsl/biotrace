@@ -1,0 +1,13 @@
+version: 1
+files:
+  metadata:
+    - path: data/sample_metadata.csv
+      required_columns:
+        - sample_id
+        - condition
+      unique:
+        - sample_id
+      allowed_values:
+        condition:
+          - control
+          - treatment

@@ -1,0 +1,31 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      dev-dependencies:
+        dependency-type: development
+    commit-message:
+      prefix: "deps"
+    open-pull-requests-limit: 10
+    ignore:
+      # Pure ESM only (no "require" export condition) as of their current
+      # majors — @vercel/ncc can't bundle them into dist/index.js. See the
+      # closed PRs for #8/#10 for the verification (webpackMissingModule
+      # stubs in the built bundle, only failing once the code path runs).
+      - dependency-name: "@actions/core"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@actions/github"
+        update-types: ["version-update:semver-major"]
+      # typescript-eslint does not support TS 7.x yet (lint fails outright).
+      - dependency-name: "typescript"
+        versions: [">=7.0.0"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci"
