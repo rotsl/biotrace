@@ -58,6 +58,13 @@ describe("markdown helpers", () => {
   it("escMd escapes markdown-significant characters", () => {
     expect(escMd("a & b < c > d * e `f`")).toBe("a &amp; b &lt; c &gt; d \\* e \\`f\\`");
   });
+  it("escMd escapes a leading backslash so it can't neutralise a later escape", () => {
+    // Without escaping backslashes first, input ending in "\`" would produce
+    // "\\`" in the output, which renders as an escaped backslash followed by
+    // an *unescaped* backtick, opening a code span the caller didn't intend.
+    const result = escMd("\\`injected`");
+    expect(result).toBe("\\\\\\`injected\\`");
+  });
   it("sevIcon maps severities to icons", () => {
     expect(sevIcon("error")).toBe("❌");
     expect(sevIcon("warning")).toBe("⚠️");

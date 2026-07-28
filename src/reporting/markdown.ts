@@ -1,6 +1,7 @@
 import type { BioTraceReport } from "./types";
 export function escMd(t: string): string {
   return t
+    .replace(/\\/g, "\\\\")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")

@@ -28,6 +28,11 @@ vi.mock("@actions/github", () => ({
   getOctokit: () => fakeOctokit,
 }));
 
+vi.mock("@actions/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@actions/core")>();
+  return { ...actual, setOutput: vi.fn(), setFailed: vi.fn() };
+});
+
 function resetFakeOctokit(changedFiles: string[] = []): void {
   fakeOctokit.rest.pulls.listFiles.mockReset().mockResolvedValue({
     data: changedFiles.map((filename) => ({ filename })),
@@ -102,6 +107,8 @@ beforeEach(() => {
   delete process.env.GITHUB_EVENT_PATH;
   delete process.env.BIOTRACE_AI_API_KEY;
   resetFakeOctokit();
+  vi.mocked(core.setOutput).mockClear();
+  vi.mocked(core.setFailed).mockClear();
 });
 
 afterEach(() => {
@@ -130,25 +137,19 @@ describe("run() — deterministic only (no GitHub token)", () => {
       path.join(tmpDir, "data", "sample_metadata.csv"),
       "sample_id,condition\nS1,control\nS2,treatment\n",
     );
-    const setOutputSpy = vi.spyOn(core, "setOutput").mockImplementation(() => {});
-    const setFailedSpy = vi.spyOn(core, "setFailed").mockImplementation(() => {});
-
     const report = await run(baseInputs({ aiEnabled: "false" }));
 
     expect(report.status).toBe("passed");
     expect(report.summary.files_checked).toBe(1);
     expect(report.ai.status).toBe("disabled");
     expect(fakeOctokit.rest.issues.createLabel).not.toHaveBeenCalled();
-    expect(setFailedSpy).not.toHaveBeenCalled();
-    expect(setOutputSpy).toHaveBeenCalledWith("status", "passed");
+    expect(core.setFailed).not.toHaveBeenCalled();
+    expect(core.setOutput).toHaveBeenCalledWith("status", "passed");
 
     const written = JSON.parse(
       fs.readFileSync(path.join(tmpDir, "biotrace-report.json"), "utf-8"),
     );
     expect(written.status).toBe("passed");
-
-    setOutputSpy.mockRestore();
-    setFailedSpy.mockRestore();
   });
 
   it("fails the run when a blocking finding is present", async () => {
@@ -166,25 +167,19 @@ describe("run() — deterministic only (no GitHub token)", () => {
       path.join(tmpDir, "data", "sample_metadata.csv"),
       "sample_id,condition\nS1,control\nS1,treatment\n",
     );
-    const setFailedSpy = vi.spyOn(core, "setFailed").mockImplementation(() => {});
-
     const report = await run(baseInputs({ aiEnabled: "false" }));
 
     expect(report.status).toBe("error");
     expect(report.summary.blocking_findings).toBeGreaterThan(0);
-    expect(setFailedSpy).toHaveBeenCalledWith(
+    expect(core.setFailed).toHaveBeenCalledWith(
       expect.stringContaining("blocking finding"),
     );
-
-    setFailedSpy.mockRestore();
   });
 
   it("propagates a configuration error and calls setFailed", async () => {
     writeConfig("version: 2\n");
-    const setFailedSpy = vi.spyOn(core, "setFailed").mockImplementation(() => {});
     await expect(run(baseInputs({ aiEnabled: "false" }))).rejects.toThrow();
-    expect(setFailedSpy).toHaveBeenCalled();
-    setFailedSpy.mockRestore();
+    expect(core.setFailed).toHaveBeenCalled();
   });
 });
 

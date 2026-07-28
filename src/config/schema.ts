@@ -11,7 +11,7 @@ const MetaF = z.object({
   required_columns: z.array(z.string()).optional(),
   non_null: z.array(z.string()).optional(),
   unique: z.array(z.string()).optional(),
-  allowed_values: z.record(z.array(z.string())).optional(),
+  allowed_values: z.record(z.string(), z.array(z.string())).optional(),
   minimum_group_size: MinGrpSz.optional(),
 });
 const FastaF = z.object({
@@ -48,7 +48,10 @@ const Assert = z.object({
 const Claim = z.object({
   id: z.string().min(1),
   source: z.object({ path: z.string().min(1), marker: z.string().optional() }),
-  evidence: z.object({ path: z.string().min(1), match: z.record(z.string()).optional() }),
+  evidence: z.object({
+    path: z.string().min(1),
+    match: z.record(z.string(), z.string()).optional(),
+  }),
   assertions: z.array(Assert).min(1),
 });
 const Fig = z.object({

@@ -9,6 +9,11 @@ import {
   EXCLUSIVE_GROUPS,
 } from "../../src/github/labels";
 
+vi.mock("@actions/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@actions/core")>();
+  return { ...actual, warning: vi.fn() };
+});
+
 function fakeOctokit(overrides: Partial<Record<string, any>> = {}): any {
   return {
     rest: {
@@ -76,13 +81,12 @@ describe("ensureLabelsExist", () => {
   });
 
   it("reports failure when createLabel fails for a non-conflict reason", async () => {
-    const warnSpy = vi.spyOn(core, "warning").mockImplementation(() => {});
+    vi.mocked(core.warning).mockClear();
     const octokit = fakeOctokit({
       createLabel: vi.fn().mockRejectedValue(new Error("network error")),
     });
     const result = await ensureLabelsExist(octokit, "o", "r", "", {}, true);
     expect(result).toEqual({ success: false, warning: "Some labels failed" });
-    warnSpy.mockRestore();
   });
 });
 

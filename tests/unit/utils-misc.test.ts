@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -12,45 +12,55 @@ import {
 } from "../../src/utils/logging";
 import { sha256File, sha256String } from "../../src/utils/hashes";
 
+vi.mock("@actions/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@actions/core")>();
+  return {
+    ...actual,
+    startGroup: vi.fn(),
+    endGroup: vi.fn(),
+    info: vi.fn(),
+    warning: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  };
+});
+
 describe("logging wrappers", () => {
+  beforeEach(() => {
+    vi.mocked(core.startGroup).mockClear();
+    vi.mocked(core.endGroup).mockClear();
+    vi.mocked(core.info).mockClear();
+    vi.mocked(core.warning).mockClear();
+    vi.mocked(core.error).mockClear();
+    vi.mocked(core.debug).mockClear();
+  });
+
   it("logGroup wraps fn in startGroup/endGroup, even on throw", () => {
-    const startSpy = vi.spyOn(core, "startGroup").mockImplementation(() => {});
-    const endSpy = vi.spyOn(core, "endGroup").mockImplementation(() => {});
     let ran = false;
     logGroup("g", () => {
       ran = true;
     });
-    expect(startSpy).toHaveBeenCalledWith("g");
+    expect(core.startGroup).toHaveBeenCalledWith("g");
     expect(ran).toBe(true);
-    expect(endSpy).toHaveBeenCalled();
+    expect(core.endGroup).toHaveBeenCalled();
 
     expect(() =>
       logGroup("g2", () => {
         throw new Error("boom");
       }),
     ).toThrow("boom");
-    expect(endSpy).toHaveBeenCalledTimes(2);
-    startSpy.mockRestore();
-    endSpy.mockRestore();
+    expect(core.endGroup).toHaveBeenCalledTimes(2);
   });
 
   it("delegates info/warning/error/debug to @actions/core", () => {
-    const infoSpy = vi.spyOn(core, "info").mockImplementation(() => {});
-    const warnSpy = vi.spyOn(core, "warning").mockImplementation(() => {});
-    const errSpy = vi.spyOn(core, "error").mockImplementation(() => {});
-    const debugSpy = vi.spyOn(core, "debug").mockImplementation(() => {});
     logInfo("i");
     logWarning("w");
     logError("e");
     logDebug("d");
-    expect(infoSpy).toHaveBeenCalledWith("i");
-    expect(warnSpy).toHaveBeenCalledWith("w");
-    expect(errSpy).toHaveBeenCalledWith("e");
-    expect(debugSpy).toHaveBeenCalledWith("d");
-    infoSpy.mockRestore();
-    warnSpy.mockRestore();
-    errSpy.mockRestore();
-    debugSpy.mockRestore();
+    expect(core.info).toHaveBeenCalledWith("i");
+    expect(core.warning).toHaveBeenCalledWith("w");
+    expect(core.error).toHaveBeenCalledWith("e");
+    expect(core.debug).toHaveBeenCalledWith("d");
   });
 });
 
