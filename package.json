@@ -32,7 +32,7 @@
     "@actions/github": "^6.0.0",
     "@actions/glob": "^0.5.0",
     "js-yaml": "^4.1.0",
-    "zod": "^3.23.8"
+    "zod": "^4.4.3"
   },
   "overrides": {
     "undici": "^6.28.0"
