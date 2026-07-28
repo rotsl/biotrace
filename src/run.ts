@@ -24,7 +24,6 @@ import {
 } from "./github/labels";
 import { upsertComment } from "./github/comments";
 import { createAnnotations } from "./github/annotations";
-import { checkWritePermissions } from "./github/permissions";
 import { generatePRComment, generateStepSummary } from "./reporting/markdown";
 import { writeReport } from "./reporting/json";
 import { determineStatus } from "./reporting/summary";
@@ -229,10 +228,15 @@ export async function run(inputs: ActionInputs): Promise<BioTraceReport> {
   createAnnotations(finalFindings);
 
   if (octokit && prNumber) {
-    const permResult = await checkWritePermissions(octokit, owner, repo);
+    // Attempt labels/comments directly rather than pre-checking via
+    // repos.get().permissions.push: that field reflects the caller's
+    // collaborator role, not the workflow's granted GITHUB_TOKEN scopes, so
+    // it reports no access even when the token can write fine. Each call
+    // below already degrades gracefully (core.warning, no throw) when
+    // access is genuinely unavailable, e.g. on a fork PR.
     const prefix = config.labels?.prefix ?? "";
     const colours = config.labels?.colours ?? {};
-    if (permResult.canWriteLabels && inputs.createLabels) {
+    if (inputs.createLabels) {
       await ensureLabelsExist(
         octokit,
         owner,
@@ -277,13 +281,11 @@ export async function run(inputs: ActionInputs): Promise<BioTraceReport> {
       if (findingLabels.length > 0)
         await applyLabels(octokit, owner, repo, prNumber, findingLabels, prefix);
     }
-    if (permResult.canWriteComments) {
-      const commentMode = config.comment?.mode ?? inputs.commentMode;
-      const includePassed = config.comment?.include_passed_checks ?? false;
-      const maxFindings = config.comment?.maximum_findings ?? 30;
-      const commentBody = generatePRComment(report, includePassed, maxFindings);
-      await upsertComment(octokit, owner, repo, prNumber, commentBody, commentMode);
-    }
+    const commentMode = config.comment?.mode ?? inputs.commentMode;
+    const includePassed = config.comment?.include_passed_checks ?? false;
+    const maxFindings = config.comment?.maximum_findings ?? 30;
+    const commentBody = generatePRComment(report, includePassed, maxFindings);
+    await upsertComment(octokit, owner, repo, prNumber, commentBody, commentMode);
   }
 
   if (status === "error")

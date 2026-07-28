@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-07-28
+
+### Fixed
+
+- Labels and PR comments were never actually written on a real, separate
+  consumer repository — `checkWritePermissions()` gated both on
+  `octokit.rest.repos.get().data.permissions.push`, which reflects the
+  caller's collaborator role, not the workflow's granted `GITHUB_TOKEN`
+  scopes. For the automatic Actions token this is essentially always
+  falsy, so the check silently (no warning logged) skipped both
+  every time, even with `permissions: pull-requests: write, issues:
+write` correctly set in the consuming workflow. Found by testing
+  `rotsl/biotrace@v1` from an actual separate repository rather than
+  only the self-test workflow (`uses: ./`) inside this repo, which never
+  exercised this path realistically.
+- Fix: removed the pre-flight permission check entirely. Labels and
+  comments are now always attempted when running on a PR; the existing
+  per-call error handling in `src/github/labels.ts` and
+  `src/github/comments.ts` (`core.warning`, no throw) already degrades
+  gracefully when access is genuinely unavailable, e.g. a real fork PR.
+  `src/github/permissions.ts` removed as dead code.
+
 ## [1.0.0] - 2026-07-28
 
 ### Added
@@ -78,5 +100,6 @@ dist/index.js`).
 - CI's Node version bumped from 20 to 22 to match the `fs.promises.glob`
   requirement above.
 
-[Unreleased]: https://github.com/rotsl/biotrace/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/rotsl/biotrace/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/rotsl/biotrace/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/rotsl/biotrace/releases/tag/v1.0.0

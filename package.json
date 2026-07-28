@@ -1,6 +1,6 @@
 {
   "name": "biotrace",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Trace biological results from data and code to figures and scientific claims",
   "main": "dist/index.js",
   "scripts": {

@@ -18,7 +18,6 @@ const { fakeOctokit } = vi.hoisted(() => {
         addLabels: vi.fn(),
         removeLabel: vi.fn(),
       },
-      repos: { get: vi.fn() },
     },
   };
   return { fakeOctokit };
@@ -44,9 +43,6 @@ function resetFakeOctokit(changedFiles: string[] = []): void {
   fakeOctokit.rest.issues.updateLabel.mockReset().mockResolvedValue({});
   fakeOctokit.rest.issues.addLabels.mockReset().mockResolvedValue({});
   fakeOctokit.rest.issues.removeLabel.mockReset().mockResolvedValue({});
-  fakeOctokit.rest.repos.get.mockReset().mockResolvedValue({
-    data: { permissions: { push: true } },
-  });
 }
 
 import { run } from "../../src/run";
@@ -211,17 +207,26 @@ describe("run() — with GitHub integration", () => {
     expect(fakeOctokit.rest.issues.createComment).toHaveBeenCalled();
   });
 
-  it("degrades gracefully without labels/comments when write access is unavailable", async () => {
+  it("degrades gracefully (without crashing or failing the run) when the API rejects label/comment writes", async () => {
+    // e.g. a fork PR where the GITHUB_TOKEN genuinely has no write access.
+    // Labels/comments are still attempted (see src/run.ts for why a
+    // pre-flight repos.get() permission check isn't used); the individual
+    // github/labels.ts and github/comments.ts calls are responsible for
+    // catching the failure and warning instead of throwing.
     writeConfig(["version: 1"].join("\n"));
     setPrEvent(3);
-    fakeOctokit.rest.repos.get.mockResolvedValue({
-      data: { permissions: { push: false } },
-    });
+    const accessError = Object.assign(
+      new Error("Resource not accessible by integration"),
+      { status: 403 },
+    );
+    fakeOctokit.rest.issues.createLabel.mockRejectedValue(accessError);
+    fakeOctokit.rest.issues.createComment.mockRejectedValue(accessError);
 
-    await run(baseInputs({ githubToken: "tok", aiEnabled: "false" }));
+    const report = await run(baseInputs({ githubToken: "tok", aiEnabled: "false" }));
 
-    expect(fakeOctokit.rest.issues.createLabel).not.toHaveBeenCalled();
-    expect(fakeOctokit.rest.issues.createComment).not.toHaveBeenCalled();
+    expect(fakeOctokit.rest.issues.createLabel).toHaveBeenCalled();
+    expect(fakeOctokit.rest.issues.createComment).toHaveBeenCalled();
+    expect(report.status).toBe("passed");
   });
 
   it("skips label creation when create-labels is false", async () => {
