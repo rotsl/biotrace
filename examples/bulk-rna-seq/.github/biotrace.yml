@@ -1,0 +1,61 @@
+version: 1
+
+repository:
+  languages: [R]
+  analysis_types: [differential-expression]
+
+files:
+  metadata:
+    - path: data/sample_metadata.csv
+      id_column: sample_id
+      required_columns: [sample_id, condition, biological_replicate]
+      non_null: [sample_id, condition]
+      unique: [sample_id]
+      allowed_values:
+        condition: [control, treatment]
+      minimum_group_size:
+        group_by: condition
+        value: 3
+        severity: warning
+
+lineage:
+  - id: differential-expression
+    inputs: [data/counts.csv, data/sample_metadata.csv]
+    code: [analysis/differential_expression.R]
+    outputs: [results/de_results.csv, figures/figure_2.png]
+    environment: [renv.lock]
+    claims: [manuscript/results.md]
+    stale_output_severity: error
+    untraceable_output_severity: warning
+
+claims:
+  - id: il6-treatment-effect
+    source:
+      path: manuscript/results.md
+      marker: "BIOTRACE:il6-treatment-effect"
+    evidence:
+      path: results/de_results.csv
+      match:
+        gene: IL6
+    assertions:
+      - field: log2FoldChange
+        operator: ">="
+        value: 1.7
+      - field: padj
+        operator: "<"
+        value: 0.01
+
+figures:
+  - path: figures/figure_2.png
+    generated_by: [analysis/figure_2.R]
+    depends_on: [results/de_results.csv]
+    caption:
+      path: manuscript/figures.md
+      marker: figure-2
+    require_provenance_sidecar: true
+
+reproducibility:
+  require_environment: true
+  require_lockfile: true
+  entrypoints: ["Rscript analysis/differential_expression.R"]
+  seed_patterns: ["set.seed("]

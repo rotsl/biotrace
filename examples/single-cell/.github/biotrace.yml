@@ -1,0 +1,30 @@
+version: 1
+
+repository:
+  languages: [Python]
+  analysis_types: [single-cell-rna-seq]
+
+files:
+  metadata:
+    - path: data/sample_metadata.csv
+      id_column: sample_id
+      required_columns: [sample_id, condition, tissue]
+      non_null: [sample_id, condition]
+      unique: [sample_id]
+
+  fastq:
+    - glob: "data/raw/**/*.fq"
+      alphabet: dna
+      reject_empty_sequences: true
+
+reproducibility:
+  require_environment: true
+  require_lockfile: true
+  entrypoints: ["python analysis/cluster.py"]
+  seed_patterns: ["random_state=", "numpy.random.seed(", "default_rng("]
+
+ai:
+  never_send:
+    - "data/raw/**"
+    - "**/*.h5ad"
+    - "**/*.loom"

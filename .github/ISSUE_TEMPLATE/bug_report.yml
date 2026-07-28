@@ -1,0 +1,36 @@
+name: Bug report
+description: Something in BioTrace isn't working as documented.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: .github/biotrace.yml
+      description: Your BioTrace configuration (redact anything sensitive).
+      render: yaml
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Workflow file
+      description: The workflow step that invokes BioTrace.
+      render: yaml
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Action run logs
+      description: Copy the relevant portion of the Action's log output.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: BioTrace version
+      description: e.g. v1.0.0, or the branch/SHA if testing from main.
+    validations:
+      required: true

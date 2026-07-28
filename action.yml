@@ -1,0 +1,68 @@
+name: BioTrace
+description: Trace biological results from data and code to figures and scientific claims.
+author: rotsl
+branding:
+  icon: search
+  color: green
+
+inputs:
+  config:
+    description: Path to the BioTrace configuration file.
+    required: false
+    default: .github/biotrace.yml
+  github-token:
+    description: GitHub token used to read pull requests and maintain labels and comments.
+    required: false
+    default: ${{ github.token }}
+  fail-on:
+    description: Minimum severity that causes the Action to fail.
+    required: false
+    default: error
+  create-labels:
+    description: Whether BioTrace should create missing labels.
+    required: false
+    default: "true"
+  comment-mode:
+    description: Whether to update one persistent PR comment, create comments, or disable comments.
+    required: false
+    default: update-existing
+  report-path:
+    description: Output path for the machine-readable BioTrace report.
+    required: false
+    default: biotrace-report.json
+  ai-enabled:
+    description: Enable optional AI-assisted observations.
+    required: false
+    default: auto
+  ai-provider:
+    description: AI provider adapter to use.
+    required: false
+    default: openai-compatible
+  ai-model:
+    description: Model identifier supplied by the repository owner.
+    required: false
+    default: ""
+  ai-base-url:
+    description: Optional base URL for an OpenAI-compatible provider.
+    required: false
+    default: ""
+  ai-key-env:
+    description: Name of the environment variable containing the user-provided API key.
+    required: false
+    default: BIOTRACE_AI_API_KEY
+
+outputs:
+  status:
+    description: Overall BioTrace status.
+  score:
+    description: Reproducibility score from 0 to 100.
+  report-path:
+    description: Path to the JSON report.
+  findings-count:
+    description: Number of findings.
+  blocking-findings-count:
+    description: Number of findings at or above the configured failure severity.
+
+runs:
+  using: node20
+  main: dist/index.js
