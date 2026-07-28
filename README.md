@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/BioTrace-v1.0.2-green" alt="BioTrace version" />
+  <img src="https://img.shields.io/badge/BioTrace-v1.0.3-green" alt="BioTrace version" />
   <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License" />
   <img src="https://img.shields.io/badge/Node.js-22%2B-339933" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/TypeScript-strict-3178C6" alt="TypeScript strict" />

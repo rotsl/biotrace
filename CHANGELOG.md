@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-07-28
+
+### Changed
+
+- Renamed the `action.yml` Marketplace listing from `BioTrace` to
+  `BioTrace Action` — plain `BioTrace` collided with an existing GitHub
+  organization name and was rejected by the Marketplace publish flow
+  ("Name must be unique"). This only affects the Marketplace listing
+  title; the repository, `uses: rotsl/biotrace@v1` reference, and all
+  other naming are unchanged.
+
 ## [1.0.2] - 2026-07-28
 
 ### Fixed
@@ -117,7 +128,8 @@ dist/index.js`).
 - CI's Node version bumped from 20 to 22 to match the `fs.promises.glob`
   requirement above.
 
-[Unreleased]: https://github.com/rotsl/biotrace/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/rotsl/biotrace/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/rotsl/biotrace/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/rotsl/biotrace/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/rotsl/biotrace/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/rotsl/biotrace/releases/tag/v1.0.0
