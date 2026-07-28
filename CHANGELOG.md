@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-07-28
+
+### Fixed
+
+- Finding-derived labels (`metadata:duplicate-samples`, `claim:unsupported`,
+  `figure:stale`, etc.) were only ever added, never removed once the
+  underlying finding stopped applying — e.g. fixing a duplicate
+  `sample_id` in a follow-up commit left the stale
+  `metadata:duplicate-samples` label on the PR indefinitely, alongside
+  the newly-added `metadata:valid`. Only the two exclusive label groups
+  (`biotrace:*` overall status, `reproducibility:*` score) were being
+  cleaned up this way. Found in the same real-repository test as 1.0.1,
+  by fixing the duplicate and confirming the label list on the follow-up
+  run. Every run now removes any managed label outside the two exclusive
+  groups that isn't backed by a current finding, before applying the
+  current set.
+
 ## [1.0.1] - 2026-07-28
 
 ### Fixed
@@ -100,6 +117,7 @@ dist/index.js`).
 - CI's Node version bumped from 20 to 22 to match the `fs.promises.glob`
   requirement above.
 
-[Unreleased]: https://github.com/rotsl/biotrace/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/rotsl/biotrace/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/rotsl/biotrace/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/rotsl/biotrace/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/rotsl/biotrace/releases/tag/v1.0.0

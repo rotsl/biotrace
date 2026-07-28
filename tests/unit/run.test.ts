@@ -207,6 +207,37 @@ describe("run() — with GitHub integration", () => {
     expect(fakeOctokit.rest.issues.createComment).toHaveBeenCalled();
   });
 
+  it("removes a finding-derived label once its finding no longer applies (regression: stale metadata:duplicate-samples label)", async () => {
+    writeConfig(
+      [
+        "version: 1",
+        "files:",
+        "  metadata:",
+        "    - path: data/sample_metadata.csv",
+        "      required_columns: [sample_id]",
+      ].join("\n"),
+    );
+    fs.mkdirSync(path.join(tmpDir, "data"));
+    // No duplicates this run - a prior run may have applied
+    // metadata:duplicate-samples while the CSV still had one.
+    fs.writeFileSync(
+      path.join(tmpDir, "data", "sample_metadata.csv"),
+      "sample_id\nS1\nS2\n",
+    );
+    setPrEvent(10);
+
+    await run(baseInputs({ githubToken: "tok", aiEnabled: "false" }));
+
+    const removedNames = fakeOctokit.rest.issues.removeLabel.mock.calls.map(
+      (c) => (c[0] as { name: string }).name,
+    );
+    expect(removedNames).toContain("metadata:duplicate-samples");
+    const addedLabels = fakeOctokit.rest.issues.addLabels.mock.calls.flatMap(
+      (c) => (c[0] as { labels: string[] }).labels,
+    );
+    expect(addedLabels).not.toContain("metadata:duplicate-samples");
+  });
+
   it("degrades gracefully (without crashing or failing the run) when the API rejects label/comment writes", async () => {
     // e.g. a fork PR where the GITHUB_TOKEN genuinely has no write access.
     // Labels/comments are still attempted (see src/run.ts for why a

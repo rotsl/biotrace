@@ -19,7 +19,9 @@ import { getChangedFiles } from "./github/changed-files";
 import {
   ensureLabelsExist,
   applyLabels,
+  removeLabels,
   manageExclusiveLabels,
+  REQUIRED_LABELS,
   EXCLUSIVE_GROUPS,
 } from "./github/labels";
 import { upsertComment } from "./github/comments";
@@ -277,7 +279,14 @@ export async function run(inputs: ActionInputs): Promise<BioTraceReport> {
         prefix,
       );
       await applyLabels(octokit, owner, repo, prNumber, [repLabel], prefix);
-      const findingLabels = finalFindings.filter((f) => f.label).map((f) => f.label!);
+      const findingLabels = [
+        ...new Set(finalFindings.filter((f) => f.label).map((f) => f.label!)),
+      ];
+      const exclusiveGroupLabels = new Set(EXCLUSIVE_GROUPS.flat());
+      const staleLabels = REQUIRED_LABELS.map((l) => l.name).filter(
+        (name) => !exclusiveGroupLabels.has(name) && !findingLabels.includes(name),
+      );
+      await removeLabels(octokit, owner, repo, prNumber, staleLabels, prefix);
       if (findingLabels.length > 0)
         await applyLabels(octokit, owner, repo, prNumber, findingLabels, prefix);
     }
