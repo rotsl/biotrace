@@ -225,8 +225,18 @@
       "type": "object",
       "properties": {
         "enabled": { "type": "string", "enum": ["auto", "true", "false"] },
-        "provider": { "type": "string" },
-        "api_key_env": { "type": "string" },
+        "provider": {
+          "oneOf": [
+            { "type": "string", "enum": ["openai-compatible", "anthropic", "gemini"] },
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["openai-compatible", "anthropic", "gemini"]
+              }
+            }
+          ]
+        },
         "model": { "type": "string" },
         "base_url": { "type": "string" },
         "tasks": {

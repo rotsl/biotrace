@@ -100,10 +100,10 @@ const Com = z.object({
   include_passed_checks: z.boolean().optional(),
   maximum_findings: z.number().int().positive().optional(),
 });
+const AiProviderKind = z.enum(["openai-compatible", "anthropic", "gemini"]);
 const Ai = z.object({
   enabled: z.enum(["auto", "true", "false"]).optional(),
-  provider: z.string().optional(),
-  api_key_env: z.string().optional(),
+  provider: z.union([AiProviderKind, z.array(AiProviderKind)]).optional(),
   model: z.string().optional(),
   base_url: z.string().optional(),
   tasks: z

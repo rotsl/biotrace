@@ -9,7 +9,7 @@ import { validateAIResponse } from "./schema";
 import { buildPrompt } from "./prompts";
 import { withRetry } from "./http-retry";
 
-export interface OpenAIConfig {
+export interface AnthropicConfig {
   apiKey: string;
   baseUrl: string;
   model: string;
@@ -18,29 +18,37 @@ export interface OpenAIConfig {
   maxRequestSize: number;
 }
 
-// Excludes non-chat model families (embeddings, audio, moderation, image
-// generation) that would otherwise be valid entries in the /models list but
-// can't serve a chat-completions request.
-const EXCLUDED_MODEL_PATTERN = /embedding|whisper|tts|moderation|dall-e/i;
+const ANTHROPIC_VERSION = "2023-06-01";
 
-export function pickDefaultModel(models: ModelInfo[]): string | null {
+// Anthropic's model list has no embeddings/audio/vision-only tier to
+// exclude; only legacy pre-Claude-2 families are worth skipping.
+const EXCLUDED_MODEL_PATTERN = /^claude-1|instant/i;
+
+export function pickDefaultAnthropicModel(models: ModelInfo[]): string | null {
   const candidates = models.filter((m) => !EXCLUDED_MODEL_PATTERN.test(m.id));
-  const preferred = candidates.find((m) => /^gpt-/i.test(m.id));
+  const preferred =
+    candidates.find((m) => /^claude-.*sonnet-4/i.test(m.id)) ??
+    candidates.find((m) => /sonnet/i.test(m.id));
+  // The API returns models newest-first, so the first remaining entry is a
+  // reasonable fallback when no sonnet variant is present.
   return (preferred ?? candidates[0])?.id ?? null;
 }
 
-export class OpenAICompatibleProvider implements AIProvider {
-  private cfg: OpenAIConfig;
-  constructor(cfg: OpenAIConfig) {
+export class AnthropicProvider implements AIProvider {
+  private cfg: AnthropicConfig;
+  constructor(cfg: AnthropicConfig) {
     this.cfg = cfg;
   }
   resolveModel(model: string): void {
     this.cfg.model = model;
   }
   async listModels(): Promise<ModelInfo[]> {
-    const url = `${this.cfg.baseUrl.replace(/\/$/, "")}/models`;
+    const url = `${this.cfg.baseUrl.replace(/\/$/, "")}/v1/models`;
     const resp = await fetch(url, {
-      headers: { Authorization: `Bearer ${this.cfg.apiKey}` },
+      headers: {
+        "x-api-key": this.cfg.apiKey,
+        "anthropic-version": ANTHROPIC_VERSION,
+      },
     });
     if (!resp.ok) throw new AIProviderError(`Status ${resp.status}`, false);
     const data = (await resp.json()) as { data?: Array<{ id: string }> };
@@ -50,21 +58,21 @@ export class OpenAICompatibleProvider implements AIProvider {
     const prompt = buildPrompt(req);
     const body = {
       model: this.cfg.model,
+      max_tokens: 4096,
+      system:
+        "You are a bioinformatics reproducibility assistant. Respond only with valid JSON, no prose, no markdown code fences. Never claim biological correctness. Always mark observations as requiring human verification.",
       messages: [
-        {
-          role: "system",
-          content:
-            "You are a bioinformatics reproducibility assistant. Respond only with valid JSON. Never claim biological correctness. Always mark observations as requiring human verification.",
-        },
         { role: "user", content: prompt },
+        // Assistant-prefill: forces the completion to continue a JSON
+        // object rather than open with prose or a markdown fence. The
+        // response text is reconstructed as "{" + text before parsing.
+        { role: "assistant", content: "{" },
       ],
-      temperature: 0.1,
-      response_format: { type: "json_object" },
     };
     const bs = JSON.stringify(body);
     if (bs.length > this.cfg.maxRequestSize)
       throw new AIProviderError("Request too large", false);
-    const url = `${this.cfg.baseUrl.replace(/\/$/, "")}/chat/completions`;
+    const url = `${this.cfg.baseUrl.replace(/\/$/, "")}/v1/messages`;
     return withRetry(
       async () => {
         const ctrl = new AbortController();
@@ -75,7 +83,8 @@ export class OpenAICompatibleProvider implements AIProvider {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${this.cfg.apiKey}`,
+              "x-api-key": this.cfg.apiKey,
+              "anthropic-version": ANTHROPIC_VERSION,
             },
             body: bs,
             signal: ctrl.signal,
@@ -89,13 +98,13 @@ export class OpenAICompatibleProvider implements AIProvider {
           throw new AIProviderError(`Status ${resp.status}`, false);
         }
         const data = (await resp.json()) as {
-          choices?: Array<{ message?: { content?: string } }>;
+          content?: Array<{ type?: string; text?: string }>;
         };
-        const content = data.choices?.[0]?.message?.content;
-        if (!content) throw new AIProviderError("Empty response", true);
+        const text = data.content?.[0]?.text;
+        if (!text) throw new AIProviderError("Empty response", true);
         let parsed: unknown;
         try {
-          parsed = JSON.parse(content);
+          parsed = JSON.parse("{" + text);
         } catch {
           throw new AIProviderError("Invalid JSON", false);
         }

@@ -172,3 +172,75 @@ integer from 0 to 100.
 | 80–100      | `reproducibility:strong`  |
 | 50–79       | `reproducibility:partial` |
 | 0–49        | `reproducibility:weak`    |
+
+## AI configuration
+
+AI-assisted observations are optional, bring-your-own-key, and advisory only — they never
+override deterministic checks or the reproducibility score. `provider` accepts either a single
+provider name or an ordered priority list; if the first provider has no key configured or its
+call fails, BioTrace automatically falls through to the next one.
+
+```yaml
+ai:
+  enabled: auto # auto | "true" | "false"
+  provider: [openai-compatible, anthropic] # or a single string, e.g. anthropic
+  model: "" # optional; blank = auto-discovered per provider
+  base_url: "" # optional override for the primary provider only
+  tasks: [pr_summary, method_drift, claim_candidates, reviewer_checklist]
+  fail_open: true
+  minimum_confidence: 0.7
+  maximum_changed_files: 100
+  maximum_patch_bytes: 150000
+  never_send: ["data/raw/**", "**/*secret*"]
+```
+
+| Field                   | Type             | Default             | Description                                               |
+| ----------------------- | ---------------- | -------------------- | ---------------------------------------------------------- |
+| `enabled`               | string           | `auto`               | `auto`, `"true"`, or `"false"`                             |
+| `provider`              | string or array  | `openai-compatible`  | One or more of `openai-compatible`, `anthropic`, `gemini`  |
+| `model`                 | string           | `""`                 | Model for the primary provider; blank = auto-discovered   |
+| `base_url`              | string           | `""`                 | Base URL override for the primary provider                |
+| `tasks`                 | array            | see defaults         | Which AI tasks to request                                  |
+| `fail_open`             | boolean          | `true`               | Whether an AI failure blocks the run                       |
+| `minimum_confidence`    | number           | `0.8`                | Drops observations below this confidence                   |
+| `maximum_changed_files` | integer          | `100`                | Cap on files sent to the AI provider                       |
+| `maximum_patch_bytes`   | integer          | `150000`             | Truncates patch content to this size                       |
+| `never_send`            | array            | see defaults         | Glob patterns always excluded from AI requests              |
+
+### Model auto-discovery
+
+Leaving `model` blank makes BioTrace fetch the provider's current model list and pick a sensible
+default automatically, avoiding a hardcoded model name that the provider later renames or
+retires. This applies independently to every provider in the priority list — a `model` you set
+only applies to the primary (first) provider; any fallback provider always auto-discovers its own
+model, since a model identifier from one provider is never valid for another.
+
+### API keys
+
+`ai-key-env` (an `action.yml` input, not a config file field) names the environment variable
+holding the primary provider's API key, defaulting to `BIOTRACE_AI_API_KEY`. Providers listed
+after the first are looked up via fixed conventional environment variable names instead of
+additional inputs:
+
+| Provider           | Conventional environment variable |
+| ------------------- | ---------------------------------- |
+| `openai-compatible` | `BIOTRACE_OPENAI_API_KEY`           |
+| `anthropic`          | `BIOTRACE_ANTHROPIC_API_KEY`        |
+| `gemini`             | `BIOTRACE_GEMINI_API_KEY`           |
+
+Set these in the workflow's `env:` block, sourced from repository or organization secrets so
+GitHub masks them in logs:
+
+```yaml
+    - uses: rotsl/biotrace@v1
+      with:
+        ai-enabled: auto
+        ai-provider: openai-compatible,anthropic,gemini
+      env:
+        BIOTRACE_AI_API_KEY: ${{ secrets.BIOTRACE_AI_API_KEY }}
+        BIOTRACE_ANTHROPIC_API_KEY: ${{ secrets.BIOTRACE_ANTHROPIC_API_KEY }}
+        BIOTRACE_GEMINI_API_KEY: ${{ secrets.BIOTRACE_GEMINI_API_KEY }}
+```
+
+With `ai-enabled: auto`, AI runs if *any* provider in the resolved priority list has a usable key
+— not only the primary's.

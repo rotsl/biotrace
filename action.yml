@@ -35,19 +35,31 @@ inputs:
     required: false
     default: auto
   ai-provider:
-    description: AI provider adapter to use.
+    description: >-
+      Comma-separated priority list of AI providers to try in order
+      (openai-compatible, anthropic, gemini). The first entry is the
+      primary provider; if it has no key configured or its call fails,
+      the next entry is tried.
     required: false
     default: openai-compatible
   ai-model:
-    description: Model identifier supplied by the repository owner.
+    description: >-
+      Model identifier for the primary (first) provider. Optional - if
+      blank, BioTrace fetches the provider's model list and picks a
+      sensible default automatically.
     required: false
     default: ""
   ai-base-url:
-    description: Optional base URL for an OpenAI-compatible provider.
+    description: Optional base URL override for the primary provider.
     required: false
     default: ""
   ai-key-env:
-    description: Name of the environment variable containing the user-provided API key.
+    description: >-
+      Name of the environment variable containing the API key for the
+      primary (first) provider. Providers listed after the first are
+      looked up via conventional environment variable names
+      (BIOTRACE_OPENAI_API_KEY, BIOTRACE_ANTHROPIC_API_KEY,
+      BIOTRACE_GEMINI_API_KEY) set in the workflow's env: block.
     required: false
     default: BIOTRACE_AI_API_KEY
 

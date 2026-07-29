@@ -29,10 +29,31 @@ import { createAnnotations } from "./github/annotations";
 import { generatePRComment, generateStepSummary } from "./reporting/markdown";
 import { writeReport } from "./reporting/json";
 import { determineStatus } from "./reporting/summary";
-import { OpenAICompatibleProvider } from "./ai/openai-compatible";
+import {
+  createProvider,
+  conventionalKeyEnvVar,
+  pickDefaultModelFor,
+  type AIProviderKind,
+} from "./ai/factory";
 import { sanitiseForAI } from "./ai/sanitise";
 import { loadConfig, ConfigurationError } from "./config/load";
 import { logWarning } from "./utils/logging";
+
+// action.yml's ai-provider always resolves to at least this single-element
+// list (its own default), so it can't be distinguished from "unset" here.
+// Treat exactly this value as "unset" and let config.ai.provider (if any)
+// take over, matching the precedence already used for model/base_url.
+function resolveProviderList(
+  inputs: ActionInputs,
+  config: BioTraceConfig,
+): AIProviderKind[] {
+  const isDefault =
+    inputs.aiProvider.length === 1 && inputs.aiProvider[0] === "openai-compatible";
+  if (!isDefault) return inputs.aiProvider;
+  const cfgProvider = config.ai?.provider;
+  if (!cfgProvider) return ["openai-compatible"];
+  return Array.isArray(cfgProvider) ? cfgProvider : [cfgProvider];
+}
 
 export async function run(inputs: ActionInputs): Promise<BioTraceReport> {
   resetFindingCounter();
@@ -104,7 +125,8 @@ export async function run(inputs: ActionInputs): Promise<BioTraceReport> {
   const repResult = calculateReproducibilityScore(config, workspace, figProvenance);
 
   let aiEnabled = false;
-  let aiStatus: string;
+  let aiStatus: string = "not-configured";
+  let aiProviderUsed: string | undefined;
   let aiObservations:
     | Array<{
         title: string;
@@ -114,35 +136,61 @@ export async function run(inputs: ActionInputs): Promise<BioTraceReport> {
         requires_human_verification: boolean;
       }>
     | undefined;
+  const providerList = resolveProviderList(inputs, config);
+  const resolveApiKey = (kind: AIProviderKind, isPrimary: boolean): string => {
+    if (isPrimary) {
+      const primary = process.env[inputs.aiKeyEnv];
+      if (primary) return primary;
+    }
+    return process.env[conventionalKeyEnvVar(kind)] ?? "";
+  };
   const effectiveAiEnabled =
     inputs.aiEnabled === "auto"
-      ? process.env[inputs.aiKeyEnv]
+      ? providerList.some((kind, i) => resolveApiKey(kind, i === 0))
         ? "true"
         : "false"
       : inputs.aiEnabled;
-  if (effectiveAiEnabled === "true" && inputs.aiModel && octokit && prNumber) {
-    const apiKey = process.env[inputs.aiKeyEnv] ?? "";
-    if (apiKey) {
+  if (effectiveAiEnabled === "true" && octokit && prNumber) {
+    const aiConfig = config.ai ?? {};
+    const patch = changedFilesList.map((f) => `diff --git a/${f} b/${f}\n`).join("\n");
+    const sanitised = sanitiseForAI(
+      changedFilesList,
+      patch,
+      aiConfig.never_send ?? [],
+      aiConfig.maximum_changed_files ?? 100,
+      aiConfig.maximum_patch_bytes ?? 150000,
+    );
+    let anyKeyFound = false;
+    let lastFailure: string | undefined;
+    for (let i = 0; i < providerList.length; i++) {
+      const kind = providerList[i]!;
+      const isPrimary = i === 0;
+      const apiKey = resolveApiKey(kind, isPrimary);
+      if (!apiKey) {
+        lastFailure = `${kind}: no API key configured`;
+        continue;
+      }
+      anyKeyFound = true;
       try {
-        const aiConfig = config.ai ?? {};
-        const provider = new OpenAICompatibleProvider({
+        const initialModel = isPrimary ? inputs.aiModel : "";
+        const provider = createProvider(kind, {
           apiKey,
-          baseUrl: inputs.aiBaseUrl || aiConfig.base_url || "https://api.openai.com/v1",
-          model: inputs.aiModel,
+          model: initialModel,
+          baseUrl: isPrimary ? inputs.aiBaseUrl || aiConfig.base_url : undefined,
           timeout: 30000,
           maxRetries: 2,
           maxRequestSize: 500000,
         });
-        const patch = changedFilesList
-          .map((f) => `diff --git a/${f} b/${f}\n`)
-          .join("\n");
-        const sanitised = sanitiseForAI(
-          changedFilesList,
-          patch,
-          aiConfig.never_send ?? [],
-          aiConfig.maximum_changed_files ?? 100,
-          aiConfig.maximum_patch_bytes ?? 150000,
-        );
+        let model = initialModel;
+        if (!model && provider.listModels) {
+          const models = await provider.listModels();
+          model = pickDefaultModelFor(kind, models) ?? "";
+          if (model) provider.resolveModel?.(model);
+        }
+        if (!model) {
+          lastFailure = `${kind}: no model available`;
+          continue;
+        }
         const response = await provider.analyse({
           changedFiles: sanitised.changedFiles,
           patchContent: sanitised.patchContent,
@@ -156,28 +204,32 @@ export async function run(inputs: ActionInputs): Promise<BioTraceReport> {
         });
         aiEnabled = true;
         aiStatus = "completed";
+        aiProviderUsed = kind;
         aiObservations = response.observations.filter(
           (o) => o.confidence >= (aiConfig.minimum_confidence ?? 0.8),
         );
+        break;
       } catch (err) {
-        aiStatus = "failed";
-        const failOpen = config.ai?.fail_open ?? true;
-        if (!failOpen)
-          allFindings.push({
-            id: "ai-0001",
-            module: "ai",
-            severity: "warning",
-            title: "AI provider failed",
-            message: "AI analysis could not be completed",
-            deterministic: false,
-          });
-        else
-          logWarning(
-            `AI failed (fail_open=true): ${err instanceof Error ? err.message : String(err)}`,
-          );
+        lastFailure = `${kind}: ${err instanceof Error ? err.message : String(err)}`;
+        logWarning(`AI provider "${kind}" failed, trying next: ${lastFailure}`);
       }
-    } else {
-      aiStatus = "no-key";
+    }
+    if (!aiEnabled) {
+      aiStatus = anyKeyFound ? "failed" : "no-key";
+      const failOpen = aiConfig.fail_open ?? true;
+      if (!failOpen)
+        allFindings.push({
+          id: "ai-0001",
+          module: "ai",
+          severity: "warning",
+          title: "AI provider failed",
+          message: "AI analysis could not be completed",
+          deterministic: false,
+        });
+      else if (anyKeyFound)
+        logWarning(
+          `AI failed after trying all configured providers (fail_open=true): ${lastFailure}`,
+        );
     }
   } else {
     aiStatus = effectiveAiEnabled === "false" ? "disabled" : "not-configured";
@@ -215,6 +267,7 @@ export async function run(inputs: ActionInputs): Promise<BioTraceReport> {
     ai: {
       enabled: aiEnabled,
       status: aiStatus,
+      provider: aiProviderUsed,
       advisory_only: true,
       observations: aiObservations,
     },

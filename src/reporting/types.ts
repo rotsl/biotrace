@@ -67,6 +67,7 @@ export interface BioTraceReport {
   ai: {
     enabled: boolean;
     status: string;
+    provider?: string;
     advisory_only: boolean;
     observations?: Array<{
       title: string;

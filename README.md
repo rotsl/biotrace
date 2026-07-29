@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/BioTrace-v1.0.3-green" alt="BioTrace version" />
+  <img src="https://img.shields.io/badge/BioTrace-v1.1.0-green" alt="BioTrace version" />
   <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License" />
   <img src="https://img.shields.io/badge/Node.js-22%2B-339933" alt="Node.js 22+" />
   <img src="https://img.shields.io/badge/TypeScript-strict-3178C6" alt="TypeScript strict" />
@@ -164,7 +164,17 @@ jobs:
 
 ## Optional AI Example
 
-Bring-your-own-key. AI observations are advisory only and never override deterministic checks:
+Bring-your-own-key. AI observations are advisory only and never override deterministic checks.
+`ai-provider` accepts a comma-separated priority list — OpenAI, Anthropic (Claude) and Gemini are
+all supported. The first provider with a configured key is tried; if its call fails, BioTrace
+falls through to the next one. `ai-model` is optional for the primary provider and always optional
+for the rest of the list — leave it blank and BioTrace fetches the provider's current model list
+and picks a sensible default automatically, which avoids hardcoding a model name that the provider
+later renames or retires.
+
+Providers after the first are picked up via conventional environment variable names
+(`BIOTRACE_OPENAI_API_KEY`, `BIOTRACE_ANTHROPIC_API_KEY`, `BIOTRACE_GEMINI_API_KEY`) rather than
+additional inputs — set whichever ones you have keys for in the workflow's `env:` block:
 
 ```yaml
 name: BioTrace
@@ -189,16 +199,20 @@ jobs:
           config: .github/biotrace.yml
           github-token: ${{ github.token }}
           ai-enabled: auto
-          ai-provider: openai-compatible
-          ai-model: ${{ vars.BIOTRACE_AI_MODEL }}
+          ai-provider: openai-compatible,anthropic
         env:
           BIOTRACE_AI_API_KEY: ${{ secrets.BIOTRACE_AI_API_KEY }}
+          BIOTRACE_ANTHROPIC_API_KEY: ${{ secrets.BIOTRACE_ANTHROPIC_API_KEY }}
       - if: always()
         uses: actions/upload-artifact@v7
         with:
           name: biotrace-report
           path: ${{ steps.biotrace.outputs.report-path }}
 ```
+
+See [AI configuration](https://rotsl.github.io/biotrace/configuration/#ai-configuration) for the
+full provider list, model auto-discovery behaviour, and the conventional environment variable
+table.
 
 ---
 
@@ -438,19 +452,19 @@ Exclusive label groups ensure only one overall status and one reproducibility la
 
 ## Action Inputs
 
-| Input           | Default                | Description                                          |
-| --------------- | ---------------------- | ---------------------------------------------------- |
-| `config`        | `.github/biotrace.yml` | Path to configuration                                |
-| `github-token`  | `${{ github.token }}`  | Token for PR/label/comment access                    |
-| `fail-on`       | `error`                | Minimum severity to fail: `info`, `warning`, `error` |
-| `create-labels` | `true`                 | Create missing labels                                |
-| `comment-mode`  | `update-existing`      | `update-existing`, `create-new`, or `disabled`       |
-| `report-path`   | `biotrace-report.json` | Output path for JSON report                          |
-| `ai-enabled`    | `auto`                 | `auto`, `true`, or `false`                           |
-| `ai-provider`   | `openai-compatible`    | AI provider adapter                                  |
-| `ai-model`      | `""`                   | Model identifier (user provides)                     |
-| `ai-base-url`   | `""`                   | Custom base URL for OpenAI-compatible API            |
-| `ai-key-env`    | `BIOTRACE_AI_API_KEY`  | Environment variable name for API key                |
+| Input           | Default                | Description                                                               |
+| --------------- | ---------------------- | ------------------------------------------------------------------------- |
+| `config`        | `.github/biotrace.yml` | Path to configuration                                                     |
+| `github-token`  | `${{ github.token }}`  | Token for PR/label/comment access                                         |
+| `fail-on`       | `error`                | Minimum severity to fail: `info`, `warning`, `error`                      |
+| `create-labels` | `true`                 | Create missing labels                                                     |
+| `comment-mode`  | `update-existing`      | `update-existing`, `create-new`, or `disabled`                            |
+| `report-path`   | `biotrace-report.json` | Output path for JSON report                                               |
+| `ai-enabled`    | `auto`                 | `auto`, `true`, or `false`                                                |
+| `ai-provider`   | `openai-compatible`    | Comma-separated priority list: `openai-compatible`, `anthropic`, `gemini` |
+| `ai-model`      | `""`                   | Model for the primary provider; blank = auto-discovered                   |
+| `ai-base-url`   | `""`                   | Custom base URL override for the primary provider                         |
+| `ai-key-env`    | `BIOTRACE_AI_API_KEY`  | Env var name for the primary provider's API key                           |
 
 ---
 
@@ -478,16 +492,19 @@ Exclusive label groups ensure only one overall status and one reproducibility la
 - AI **never marks** deterministic checks as passed
 - AI **never alters** the reproducibility score
 - If AI fails and `fail_open` is true, deterministic checks continue unaffected
+- With multiple providers configured, the same sanitised content is sent only to whichever
+  provider ends up handling the request (the first one in the priority list with a key that
+  succeeds) — never to more than one
 
 ---
 
 ## Fork Pull-Request Behaviour
 
-| Scenario                | Deterministic checks | AI                      | Labels              | Comments            |
-| ----------------------- | -------------------- | ----------------------- | ------------------- | ------------------- |
-| Same-repo PR            | ✅ Full              | ✅ If key available     | ✅                  | ✅                  |
-| Fork PR                 | ✅ Full              | ❌ Skipped (no secrets) | ✅                  | ✅                  |
-| Fork PR (no write perm) | ✅ Full              | ❌ Skipped              | ❌ Graceful warning | ❌ Graceful warning |
+| Scenario                | Deterministic checks | AI                                      | Labels              | Comments            |
+| ----------------------- | -------------------- | --------------------------------------- | ------------------- | ------------------- |
+| Same-repo PR            | ✅ Full              | ✅ If any configured provider has a key | ✅                  | ✅                  |
+| Fork PR                 | ✅ Full              | ❌ Skipped (no secrets)                 | ✅                  | ✅                  |
+| Fork PR (no write perm) | ✅ Full              | ❌ Skipped                              | ❌ Graceful warning | ❌ Graceful warning |
 
 ---
 
@@ -587,8 +604,8 @@ Exclusive label groups ensure only one overall status and one reproducibility la
 | No labels appear on the PR                        | Missing `issues: write` permission, or `create-labels: "false"`                                             | Verify the permission and the `create-labels` input; check the Action logs for permission errors.                                                                                                                              |
 | No PR comment appears                             | Missing `pull-requests: write` permission, or `comment-mode: disabled`                                      | Verify the permission and the `comment-mode` input.                                                                                                                                                                            |
 | `fetch-depth` error / missing base commit         | Checkout used the default shallow clone                                                                     | Add `fetch-depth: 0` to the `actions/checkout` step.                                                                                                                                                                           |
-| `AI status: no-key` in the report                 | `BIOTRACE_AI_API_KEY` isn't set, or the workflow ran from a fork                                            | Expected for fork PRs (forks can't access parent secrets). For same-repo PRs, verify the secret exists.                                                                                                                        |
-| `AI status: failed` in the report                 | The provider returned invalid JSON, the schema didn't match, or the request timed out                       | Non-blocking by default (`fail_open: true`). Check the model identifier, API key validity, and provider status.                                                                                                                |
+| `AI status: no-key` in the report                 | None of the configured providers in `ai-provider` have a resolvable key, or the workflow ran from a fork    | Expected for fork PRs (forks can't access parent secrets). For same-repo PRs, verify `ai-key-env`'s secret (primary) or the conventional `BIOTRACE_<PROVIDER>_API_KEY` secrets (fallback providers) exist.                     |
+| `AI status: failed` in the report                 | Every configured provider had a key but every call failed (invalid JSON, schema mismatch, timeout, etc.)    | Non-blocking by default (`fail_open: true`). Check the Action logs for a per-provider warning, then verify the model identifier(s) and API key validity for each configured provider.                                          |
 | `check-dist` CI step fails                        | Source changed but `dist/index.js` wasn't rebuilt                                                           | Run `npm run build`, commit `dist/index.js`.                                                                                                                                                                                   |
 | Marketplace publish option missing                | Repo not public, `action.yml` not at repo root, name already taken, or `dist/index.js` missing from the tag | Verify each of those conditions.                                                                                                                                                                                               |
 | AI and labels don't work on a fork PR             | Expected — fork PRs can't access secrets and `pull_request` has a read-only token                           | BioTrace automatically skips AI; labels/comments may need maintainer approval to run at all.                                                                                                                                   |
@@ -623,6 +640,8 @@ limitations under the License.
 ---
 
 ## Citation
+
+Related paper: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21675372.svg)](https://doi.org/10.5281/zenodo.21675372)
 
 ```bibtex
 @software{biotrace2026,

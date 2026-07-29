@@ -22,12 +22,23 @@
 - AI **never marks** deterministic checks as passed
 - AI **never alters** the reproducibility score
 - If AI fails and `fail_open` is true, deterministic checks continue unaffected
+- With multiple providers configured, sanitised content is sent only to whichever provider
+  ends up handling the request — never to more than one
+
+## API keys for multiple providers
+
+The primary (first) provider's key comes from the environment variable named by the `ai-key-env`
+input (default `BIOTRACE_AI_API_KEY`). Providers listed after the first are looked up via fixed
+conventional environment variable names — `BIOTRACE_OPENAI_API_KEY`, `BIOTRACE_ANTHROPIC_API_KEY`,
+`BIOTRACE_GEMINI_API_KEY` — rather than additional `action.yml` inputs. Set these in the
+workflow's `env:` block, sourced from repository or organization secrets (`secrets.*`) so GitHub
+masks them in logs the same way it does for `BIOTRACE_AI_API_KEY` today.
 
 ## Fork pull-request behaviour
 
 | Scenario                | Deterministic checks | AI                      | Labels              | Comments            |
 | ----------------------- | -------------------- | ----------------------- | ------------------- | ------------------- |
-| Same-repo PR            | ✅ Full              | ✅ If key available     | ✅                  | ✅                  |
+| Same-repo PR            | ✅ Full              | ✅ If any configured provider has a key | ✅                  | ✅                  |
 | Fork PR                 | ✅ Full              | ❌ Skipped (no secrets) | ✅                  | ✅                  |
 | Fork PR (no write perm) | ✅ Full              | ❌ Skipped              | ❌ Graceful warning | ❌ Graceful warning |
 

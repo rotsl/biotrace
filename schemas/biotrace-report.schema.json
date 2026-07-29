@@ -111,6 +111,7 @@
       "properties": {
         "enabled": { "type": "boolean" },
         "status": { "type": "string" },
+        "provider": { "type": "string" },
         "advisory_only": { "type": "boolean" },
         "observations": {
           "type": "array",

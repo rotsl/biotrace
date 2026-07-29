@@ -59,7 +59,6 @@ export const DEFAULT_CONFIG: BioTraceConfig = {
   ai: {
     enabled: "auto",
     provider: "openai-compatible",
-    api_key_env: "BIOTRACE_AI_API_KEY",
     tasks: ["pr_summary", "method_drift", "claim_candidates", "reviewer_checklist"],
     fail_open: true,
     minimum_confidence: 0.8,

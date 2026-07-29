@@ -101,10 +101,10 @@ export interface CommentConfig {
   include_passed_checks?: boolean;
   maximum_findings?: number;
 }
+export type AIProviderKind = "openai-compatible" | "anthropic" | "gemini";
 export interface AiConfig {
   enabled?: "auto" | "true" | "false";
-  provider?: string;
-  api_key_env?: string;
+  provider?: AIProviderKind | AIProviderKind[];
   model?: string;
   base_url?: string;
   tasks?: string[];

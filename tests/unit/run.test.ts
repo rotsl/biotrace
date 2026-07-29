@@ -56,6 +56,9 @@ const ENV_KEYS = [
   "GITHUB_SHA",
   "GITHUB_BASE_REF",
   "BIOTRACE_AI_API_KEY",
+  "BIOTRACE_OPENAI_API_KEY",
+  "BIOTRACE_ANTHROPIC_API_KEY",
+  "BIOTRACE_GEMINI_API_KEY",
 ];
 let saved: Record<string, string | undefined>;
 let tmpDir: string;
@@ -69,7 +72,7 @@ function baseInputs(overrides: Partial<ActionInputs> = {}): ActionInputs {
     commentMode: "update-existing",
     reportPath: "biotrace-report.json",
     aiEnabled: "auto",
-    aiProvider: "openai-compatible",
+    aiProvider: ["openai-compatible"],
     aiModel: "",
     aiBaseUrl: "",
     aiKeyEnv: "BIOTRACE_AI_API_KEY",
@@ -102,6 +105,9 @@ beforeEach(() => {
   delete process.env.GITHUB_EVENT_NAME;
   delete process.env.GITHUB_EVENT_PATH;
   delete process.env.BIOTRACE_AI_API_KEY;
+  delete process.env.BIOTRACE_OPENAI_API_KEY;
+  delete process.env.BIOTRACE_ANTHROPIC_API_KEY;
+  delete process.env.BIOTRACE_GEMINI_API_KEY;
   resetFakeOctokit();
   vi.mocked(core.setOutput).mockClear();
   vi.mocked(core.setFailed).mockClear();
@@ -364,5 +370,211 @@ describe("run() — AI integration", () => {
 
     expect(report.ai.status).toBe("disabled");
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("falls through to the secondary provider when the primary's call fails", async () => {
+    writeConfig(["version: 1"].join("\n"));
+    setPrEvent(7);
+    process.env.BIOTRACE_AI_API_KEY = "sk-openai";
+    process.env.BIOTRACE_ANTHROPIC_API_KEY = "sk-anthropic";
+    const validPayload = {
+      summary: "s",
+      observations: [],
+      candidate_claims: [],
+      reviewer_checklist: [],
+    };
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.endsWith("/chat/completions"))
+        return Promise.resolve({ ok: false, status: 401, json: async () => ({}) });
+      if (url.endsWith("/v1/models"))
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [{ id: "claude-sonnet-4-20250514" }] }),
+        });
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          content: [{ type: "text", text: JSON.stringify(validPayload).slice(1) }],
+        }),
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const report = await run(
+      baseInputs({
+        githubToken: "tok",
+        aiEnabled: "true",
+        aiProvider: ["openai-compatible", "anthropic"],
+        aiModel: "gpt-4o-mini",
+      }),
+    );
+
+    expect(report.ai.status).toBe("completed");
+    expect(report.ai.provider).toBe("anthropic");
+    // secondary provider had no explicit model, so its model must have been
+    // auto-discovered via listModels() before the analyse() call above.
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.anthropic.com/v1/models",
+      expect.anything(),
+    );
+  });
+
+  it("skips straight to the secondary provider when the primary has no key", async () => {
+    writeConfig(["version: 1"].join("\n"));
+    setPrEvent(8);
+    process.env.BIOTRACE_ANTHROPIC_API_KEY = "sk-anthropic";
+    const validPayload = {
+      summary: "s",
+      observations: [],
+      candidate_claims: [],
+      reviewer_checklist: [],
+    };
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.endsWith("/v1/models"))
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [{ id: "claude-sonnet-4-20250514" }] }),
+        });
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          content: [{ type: "text", text: JSON.stringify(validPayload).slice(1) }],
+        }),
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const report = await run(
+      baseInputs({
+        githubToken: "tok",
+        aiEnabled: "true",
+        aiProvider: ["openai-compatible", "anthropic"],
+      }),
+    );
+
+    expect(report.ai.status).toBe("completed");
+    expect(report.ai.provider).toBe("anthropic");
+  });
+
+  it("reports failed (not no-key) when every configured provider has a key but all calls fail", async () => {
+    writeConfig(["version: 1"].join("\n"));
+    setPrEvent(11);
+    process.env.BIOTRACE_AI_API_KEY = "sk-openai";
+    process.env.BIOTRACE_ANTHROPIC_API_KEY = "sk-anthropic";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: false, status: 401, json: async () => ({}) }),
+    );
+
+    const report = await run(
+      baseInputs({
+        githubToken: "tok",
+        aiEnabled: "true",
+        aiProvider: ["openai-compatible", "anthropic"],
+        aiModel: "gpt-4o-mini",
+      }),
+    );
+
+    expect(report.ai.status).toBe("failed");
+    expect(report.ai.enabled).toBe(false);
+  });
+
+  it("auto-discovers a model for the primary provider when ai-model is blank", async () => {
+    writeConfig(["version: 1"].join("\n"));
+    setPrEvent(12);
+    process.env.BIOTRACE_AI_API_KEY = "sk-openai";
+    const validPayload = {
+      summary: "s",
+      observations: [],
+      candidate_claims: [],
+      reviewer_checklist: [],
+    };
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.endsWith("/models"))
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [{ id: "gpt-4o-mini" }] }),
+        });
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [{ message: { content: JSON.stringify(validPayload) } }],
+        }),
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const report = await run(
+      baseInputs({ githubToken: "tok", aiEnabled: "true", aiModel: "" }),
+    );
+
+    expect(report.ai.status).toBe("completed");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.openai.com/v1/models",
+      expect.anything(),
+    );
+    const analyseCall = fetchMock.mock.calls.find(([url]: [string]) =>
+      url.endsWith("/chat/completions"),
+    );
+    const body = JSON.parse((analyseCall![1] as RequestInit).body as string) as {
+      model: string;
+    };
+    expect(body.model).toBe("gpt-4o-mini");
+  });
+
+  it("auto-picks a model for a fallback provider even when ai-model was set for the primary", async () => {
+    writeConfig(["version: 1"].join("\n"));
+    setPrEvent(13);
+    process.env.BIOTRACE_ANTHROPIC_API_KEY = "sk-anthropic";
+    const validPayload = {
+      summary: "s",
+      observations: [],
+      candidate_claims: [],
+      reviewer_checklist: [],
+    };
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.endsWith("/v1/models"))
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [{ id: "claude-sonnet-4-20250514" }] }),
+        });
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          content: [{ type: "text", text: JSON.stringify(validPayload).slice(1) }],
+        }),
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    // ai-model is set, but only the primary (openai-compatible) has no key,
+    // so the run falls through to anthropic, which must auto-pick its own
+    // model rather than reusing the primary's explicit gpt-4o-mini value.
+    const report = await run(
+      baseInputs({
+        githubToken: "tok",
+        aiEnabled: "true",
+        aiProvider: ["openai-compatible", "anthropic"],
+        aiModel: "gpt-4o-mini",
+      }),
+    );
+
+    expect(report.ai.status).toBe("completed");
+    expect(report.ai.provider).toBe("anthropic");
+    const analyseCall = fetchMock.mock.calls.find(([url]: [string]) =>
+      url.endsWith("/v1/messages"),
+    );
+    const body = JSON.parse((analyseCall![1] as RequestInit).body as string) as {
+      model: string;
+    };
+    expect(body.model).toBe("claude-sonnet-4-20250514");
   });
 });

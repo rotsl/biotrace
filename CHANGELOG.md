@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-29
+
+### Added
+
+- AI-assisted observations now support Anthropic (Claude) and Google
+  Gemini alongside OpenAI-compatible providers. `ai-provider` accepts a
+  comma-separated priority list (`openai-compatible`, `anthropic`,
+  `gemini`); if the first provider has no key configured or its call
+  fails after its own retries, BioTrace automatically falls through to
+  the next one.
+- Automatic model discovery: `ai-model` is now optional for every
+  provider. When left blank, BioTrace fetches the provider's current
+  model list and picks a sensible default via a per-provider heuristic
+  (excluding embedding/audio/vision-only and unpinned experimental
+  variants), avoiding a hardcoded model name the provider later renames
+  or retires. A model set via `ai-model` applies only to the primary
+  provider — fallback providers always auto-discover their own model,
+  since a model identifier from one provider is never valid for
+  another.
+- Providers after the first are picked up via conventional environment
+  variable names (`BIOTRACE_OPENAI_API_KEY`, `BIOTRACE_ANTHROPIC_API_KEY`,
+  `BIOTRACE_GEMINI_API_KEY`) rather than additional `action.yml` inputs,
+  set directly in the workflow's `env:` block. The existing `ai-key-env`
+  input continues to name the primary provider's key and defaults to
+  `BIOTRACE_AI_API_KEY`, unchanged.
+- The JSON report gains `ai.provider`, recording which provider actually
+  produced the result.
+- Documented AI configuration in a new `docs/configuration.md#ai-configuration`
+  section, previously the only schema block without dedicated docs.
+
+### Changed
+
+- `ai-enabled: auto` now resolves to enabled if _any_ provider in the
+  resolved priority list has a usable key, not only the primary's.
+- `config.ai.provider` accepts a single provider name or an ordered
+  array; `config.ai.api_key_env` (already unused) has been removed from
+  the schema — a config file that still sets it will now fail
+  validation with a clear "unrecognized key" error rather than being
+  silently ignored.
+- Internal: extracted the exponential-backoff/retry loop shared by all
+  three AI provider adapters into `src/ai/http-retry.ts`.
+
 ## [1.0.3] - 2026-07-28
 
 ### Changed
@@ -128,7 +170,8 @@ dist/index.js`).
 - CI's Node version bumped from 20 to 22 to match the `fs.promises.glob`
   requirement above.
 
-[Unreleased]: https://github.com/rotsl/biotrace/compare/v1.0.3...HEAD
+[Unreleased]: https://github.com/rotsl/biotrace/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/rotsl/biotrace/compare/v1.0.3...v1.1.0
 [1.0.3]: https://github.com/rotsl/biotrace/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/rotsl/biotrace/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/rotsl/biotrace/compare/v1.0.0...v1.0.1

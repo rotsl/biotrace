@@ -24,6 +24,11 @@ export interface AIAnalysisResponse {
   }>;
   reviewer_checklist: string[];
 }
+export interface ModelInfo {
+  id: string;
+}
 export interface AIProvider {
   analyse(request: AIAnalysisRequest): Promise<AIAnalysisResponse>;
+  listModels?(): Promise<ModelInfo[]>;
+  resolveModel?(model: string): void;
 }

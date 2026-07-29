@@ -1,8 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import {
-  OpenAICompatibleProvider,
-  pickDefaultModel,
-} from "../../src/ai/openai-compatible";
+import { AnthropicProvider, pickDefaultAnthropicModel } from "../../src/ai/anthropic";
 import { AIProviderError } from "../../src/ai/provider";
 import type { AIAnalysisRequest } from "../../src/ai/types";
 
@@ -29,17 +26,20 @@ function jsonResponse(body: unknown, ok = true, status = 200) {
   };
 }
 
-function chatCompletion(content: unknown) {
-  return jsonResponse({ choices: [{ message: { content: JSON.stringify(content) } }] });
+function messagesResponse(payload: unknown) {
+  // The provider reconstructs JSON as "{" + text, so the fixture must omit
+  // the leading "{" the same way the assistant-prefill trick does.
+  const full = JSON.stringify(payload);
+  return jsonResponse({ content: [{ type: "text", text: full.slice(1) }] });
 }
 
 function provider(
   overrides: Partial<{ maxRetries: number; maxRequestSize: number }> = {},
 ) {
-  return new OpenAICompatibleProvider({
+  return new AnthropicProvider({
     apiKey: "key",
-    baseUrl: "https://example.com/v1",
-    model: "gpt-4o-mini",
+    baseUrl: "https://example.com",
+    model: "claude-sonnet-4-20250514",
     timeout: 30000,
     maxRetries: 0,
     maxRequestSize: 500000,
@@ -52,16 +52,38 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("OpenAICompatibleProvider", () => {
+describe("AnthropicProvider", () => {
   it("returns a parsed, schema-valid response on success", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(chatCompletion(validPayload));
+    const fetchMock = vi.fn().mockResolvedValue(messagesResponse(validPayload));
     vi.stubGlobal("fetch", fetchMock);
     const result = await provider().analyse(req);
     expect(result).toEqual(validPayload);
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://example.com/v1/chat/completions",
+      "https://example.com/v1/messages",
       expect.objectContaining({ method: "POST" }),
     );
+  });
+
+  it("uses x-api-key/anthropic-version headers, not Authorization", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(messagesResponse(validPayload));
+    vi.stubGlobal("fetch", fetchMock);
+    await provider().analyse(req);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(headers["x-api-key"]).toBe("key");
+    expect(headers["anthropic-version"]).toBeTruthy();
+    expect(headers["Authorization"]).toBeUndefined();
+  });
+
+  it("prefills the assistant turn with an opening brace", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(messagesResponse(validPayload));
+    vi.stubGlobal("fetch", fetchMock);
+    await provider().analyse(req);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string) as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    expect(body.messages.at(-1)).toEqual({ role: "assistant", content: "{" });
   });
 
   it("throws immediately when the request body exceeds maxRequestSize", async () => {
@@ -83,9 +105,7 @@ describe("OpenAICompatibleProvider", () => {
   it("throws immediately on invalid JSON content, without retrying", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValue(
-        jsonResponse({ choices: [{ message: { content: "not json" } }] }),
-      );
+      .mockResolvedValue(jsonResponse({ content: [{ type: "text", text: "not json" }] }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(provider({ maxRetries: 2 }).analyse(req)).rejects.toThrow(
       "Invalid JSON",
@@ -94,7 +114,7 @@ describe("OpenAICompatibleProvider", () => {
   });
 
   it("throws immediately when the response fails schema validation", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(chatCompletion({ not: "valid" }));
+    const fetchMock = vi.fn().mockResolvedValue(messagesResponse({ not: "valid" }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(provider({ maxRetries: 2 }).analyse(req)).rejects.toThrow(
       "Schema mismatch",
@@ -107,7 +127,7 @@ describe("OpenAICompatibleProvider", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({}, false, 429))
-      .mockResolvedValueOnce(chatCompletion(validPayload));
+      .mockResolvedValueOnce(messagesResponse(validPayload));
     vi.stubGlobal("fetch", fetchMock);
     const promise = provider({ maxRetries: 1 }).analyse(req);
     await vi.runAllTimersAsync();
@@ -131,7 +151,7 @@ describe("OpenAICompatibleProvider", () => {
     const fetchMock = vi
       .fn()
       .mockRejectedValueOnce(new DOMException("aborted", "AbortError"))
-      .mockResolvedValueOnce(chatCompletion(validPayload));
+      .mockResolvedValueOnce(messagesResponse(validPayload));
     vi.stubGlobal("fetch", fetchMock);
     const promise = provider({ maxRetries: 1 }).analyse(req);
     await vi.runAllTimersAsync();
@@ -152,44 +172,55 @@ describe("OpenAICompatibleProvider", () => {
     it("fetches and maps the model list", async () => {
       const fetchMock = vi.fn().mockResolvedValue(
         jsonResponse({
-          data: [{ id: "gpt-4o-mini" }, { id: "text-embedding-3-small" }],
+          data: [{ id: "claude-sonnet-4-20250514" }, { id: "claude-opus-4-20250514" }],
         }),
       );
       vi.stubGlobal("fetch", fetchMock);
       const models = await provider().listModels();
-      expect(models).toEqual([{ id: "gpt-4o-mini" }, { id: "text-embedding-3-small" }]);
+      expect(models).toEqual([
+        { id: "claude-sonnet-4-20250514" },
+        { id: "claude-opus-4-20250514" },
+      ]);
       expect(fetchMock).toHaveBeenCalledWith(
         "https://example.com/v1/models",
         expect.objectContaining({
-          headers: expect.objectContaining({ Authorization: "Bearer key" }) as unknown,
+          headers: expect.objectContaining({ "x-api-key": "key" }) as unknown,
         }),
       );
     });
   });
 
-  describe("pickDefaultModel", () => {
-    it("prefers a gpt- chat model over other entries", () => {
+  describe("pickDefaultAnthropicModel", () => {
+    it("prefers a sonnet-4 model when present", () => {
       expect(
-        pickDefaultModel([{ id: "text-embedding-3-small" }, { id: "gpt-4o-mini" }]),
-      ).toBe("gpt-4o-mini");
-    });
-
-    it("excludes embedding/whisper/tts/moderation/dall-e models", () => {
-      expect(
-        pickDefaultModel([
-          { id: "text-embedding-3-small" },
-          { id: "whisper-1" },
-          { id: "gpt-4o-mini" },
+        pickDefaultAnthropicModel([
+          { id: "claude-opus-4-20250514" },
+          { id: "claude-sonnet-4-20250514" },
         ]),
-      ).toBe("gpt-4o-mini");
+      ).toBe("claude-sonnet-4-20250514");
     });
 
-    it("falls back to the first remaining candidate when no gpt- model exists", () => {
-      expect(pickDefaultModel([{ id: "o1-mini" }])).toBe("o1-mini");
+    it("falls back to any sonnet model", () => {
+      expect(
+        pickDefaultAnthropicModel([
+          { id: "claude-3-5-sonnet-20241022" },
+          { id: "claude-3-opus-20240229" },
+        ]),
+      ).toBe("claude-3-5-sonnet-20241022");
+    });
+
+    it("excludes legacy claude-1/instant models", () => {
+      expect(
+        pickDefaultAnthropicModel([
+          { id: "claude-instant-1.2" },
+          { id: "claude-1" },
+          { id: "claude-3-opus-20240229" },
+        ]),
+      ).toBe("claude-3-opus-20240229");
     });
 
     it("returns null for an empty list", () => {
-      expect(pickDefaultModel([])).toBeNull();
+      expect(pickDefaultAnthropicModel([])).toBeNull();
     });
   });
 });

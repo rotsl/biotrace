@@ -86,7 +86,8 @@ jobs:
 ## Optional AI example
 
 Bring-your-own-key. AI observations are advisory only and never override
-deterministic checks:
+deterministic checks. `ai-model` is optional — leave it blank and BioTrace
+picks a current model automatically:
 
 ```yaml
 name: BioTrace
@@ -112,7 +113,6 @@ jobs:
           github-token: ${{ github.token }}
           ai-enabled: auto
           ai-provider: openai-compatible
-          ai-model: ${{ vars.BIOTRACE_AI_MODEL }}
         env:
           BIOTRACE_AI_API_KEY: ${{ secrets.BIOTRACE_AI_API_KEY }}
       - if: always()
@@ -121,6 +121,10 @@ jobs:
           name: biotrace-report
           path: ${{ steps.biotrace.outputs.report-path }}
 ```
+
+`ai-provider` also accepts a comma-separated priority list (Claude and Gemini are supported too)
+so BioTrace falls through to a backup provider if the first one fails — see
+[AI configuration](configuration.md#ai-configuration) for multi-provider setup.
 
 ## What a report looks like
 

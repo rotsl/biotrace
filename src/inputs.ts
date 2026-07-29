@@ -1,4 +1,5 @@
 import * as core from "@actions/core";
+import { isAIProviderKind, type AIProviderKind } from "./ai/factory";
 export interface ActionInputs {
   config: string;
   githubToken: string;
@@ -7,7 +8,7 @@ export interface ActionInputs {
   commentMode: "update-existing" | "create-new" | "disabled";
   reportPath: string;
   aiEnabled: "auto" | "true" | "false";
-  aiProvider: string;
+  aiProvider: AIProviderKind[];
   aiModel: string;
   aiBaseUrl: string;
   aiKeyEnv: string;
@@ -22,6 +23,13 @@ export function parseInputs(): ActionInputs {
   const ra = core.getInput("ai-enabled") || "auto";
   if (!["auto", "true", "false"].includes(ra))
     throw new Error(`Invalid ai-enabled: "${ra}"`);
+  const rp = core.getInput("ai-provider") || "openai-compatible";
+  const aiProvider = rp
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  for (const p of aiProvider)
+    if (!isAIProviderKind(p)) throw new Error(`Invalid ai-provider: "${p}"`);
   return {
     config: core.getInput("config") || ".github/biotrace.yml",
     githubToken: core.getInput("github-token") || "",
@@ -30,7 +38,7 @@ export function parseInputs(): ActionInputs {
     commentMode: rc as ActionInputs["commentMode"],
     reportPath: core.getInput("report-path") || "biotrace-report.json",
     aiEnabled: ra as ActionInputs["aiEnabled"],
-    aiProvider: core.getInput("ai-provider") || "openai-compatible",
+    aiProvider: aiProvider as AIProviderKind[],
     aiModel: core.getInput("ai-model") || "",
     aiBaseUrl: core.getInput("ai-base-url") || "",
     aiKeyEnv: core.getInput("ai-key-env") || "BIOTRACE_AI_API_KEY",

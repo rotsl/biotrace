@@ -1,8 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import {
-  OpenAICompatibleProvider,
-  pickDefaultModel,
-} from "../../src/ai/openai-compatible";
+import { GeminiProvider, pickDefaultGeminiModel } from "../../src/ai/gemini";
 import { AIProviderError } from "../../src/ai/provider";
 import type { AIAnalysisRequest } from "../../src/ai/types";
 
@@ -29,17 +26,24 @@ function jsonResponse(body: unknown, ok = true, status = 200) {
   };
 }
 
-function chatCompletion(content: unknown) {
-  return jsonResponse({ choices: [{ message: { content: JSON.stringify(content) } }] });
+function generateContentResponse(payload: unknown, finishReason = "STOP") {
+  return jsonResponse({
+    candidates: [
+      {
+        content: { parts: [{ text: JSON.stringify(payload) }] },
+        finishReason,
+      },
+    ],
+  });
 }
 
 function provider(
   overrides: Partial<{ maxRetries: number; maxRequestSize: number }> = {},
 ) {
-  return new OpenAICompatibleProvider({
+  return new GeminiProvider({
     apiKey: "key",
-    baseUrl: "https://example.com/v1",
-    model: "gpt-4o-mini",
+    baseUrl: "https://example.com",
+    model: "gemini-2.0-flash",
     timeout: 30000,
     maxRetries: 0,
     maxRequestSize: 500000,
@@ -52,16 +56,27 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("OpenAICompatibleProvider", () => {
+describe("GeminiProvider", () => {
   it("returns a parsed, schema-valid response on success", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(chatCompletion(validPayload));
+    const fetchMock = vi.fn().mockResolvedValue(generateContentResponse(validPayload));
     vi.stubGlobal("fetch", fetchMock);
     const result = await provider().analyse(req);
     expect(result).toEqual(validPayload);
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://example.com/v1/chat/completions",
+      "https://example.com/v1beta/models/gemini-2.0-flash:generateContent?key=key",
       expect.objectContaining({ method: "POST" }),
     );
+  });
+
+  it("passes responseMimeType: application/json in generationConfig", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(generateContentResponse(validPayload));
+    vi.stubGlobal("fetch", fetchMock);
+    await provider().analyse(req);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string) as {
+      generationConfig: { responseMimeType: string };
+    };
+    expect(body.generationConfig.responseMimeType).toBe("application/json");
   });
 
   it("throws immediately when the request body exceeds maxRequestSize", async () => {
@@ -81,11 +96,13 @@ describe("OpenAICompatibleProvider", () => {
   });
 
   it("throws immediately on invalid JSON content, without retrying", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(
-        jsonResponse({ choices: [{ message: { content: "not json" } }] }),
-      );
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        candidates: [
+          { content: { parts: [{ text: "not json" }] }, finishReason: "STOP" },
+        ],
+      }),
+    );
     vi.stubGlobal("fetch", fetchMock);
     await expect(provider({ maxRetries: 2 }).analyse(req)).rejects.toThrow(
       "Invalid JSON",
@@ -94,10 +111,25 @@ describe("OpenAICompatibleProvider", () => {
   });
 
   it("throws immediately when the response fails schema validation", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(chatCompletion({ not: "valid" }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(generateContentResponse({ not: "valid" }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(provider({ maxRetries: 2 }).analyse(req)).rejects.toThrow(
       "Schema mismatch",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats a SAFETY finish reason with no text as non-retryable", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse({ candidates: [{ content: {}, finishReason: "SAFETY" }] }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(provider({ maxRetries: 2 }).analyse(req)).rejects.toThrow(
+      "Blocked or truncated response",
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -107,7 +139,7 @@ describe("OpenAICompatibleProvider", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({}, false, 429))
-      .mockResolvedValueOnce(chatCompletion(validPayload));
+      .mockResolvedValueOnce(generateContentResponse(validPayload));
     vi.stubGlobal("fetch", fetchMock);
     const promise = provider({ maxRetries: 1 }).analyse(req);
     await vi.runAllTimersAsync();
@@ -131,7 +163,7 @@ describe("OpenAICompatibleProvider", () => {
     const fetchMock = vi
       .fn()
       .mockRejectedValueOnce(new DOMException("aborted", "AbortError"))
-      .mockResolvedValueOnce(chatCompletion(validPayload));
+      .mockResolvedValueOnce(generateContentResponse(validPayload));
     vi.stubGlobal("fetch", fetchMock);
     const promise = provider({ maxRetries: 1 }).analyse(req);
     await vi.runAllTimersAsync();
@@ -149,47 +181,62 @@ describe("OpenAICompatibleProvider", () => {
   });
 
   describe("listModels", () => {
-    it("fetches and maps the model list", async () => {
+    it("fetches, filters to generateContent-capable models, and strips the models/ prefix", async () => {
       const fetchMock = vi.fn().mockResolvedValue(
         jsonResponse({
-          data: [{ id: "gpt-4o-mini" }, { id: "text-embedding-3-small" }],
+          models: [
+            {
+              name: "models/gemini-2.0-flash",
+              supportedGenerationMethods: ["generateContent"],
+            },
+            {
+              name: "models/text-embedding-004",
+              supportedGenerationMethods: ["embedContent"],
+            },
+          ],
         }),
       );
       vi.stubGlobal("fetch", fetchMock);
       const models = await provider().listModels();
-      expect(models).toEqual([{ id: "gpt-4o-mini" }, { id: "text-embedding-3-small" }]);
-      expect(fetchMock).toHaveBeenCalledWith(
-        "https://example.com/v1/models",
-        expect.objectContaining({
-          headers: expect.objectContaining({ Authorization: "Bearer key" }) as unknown,
-        }),
-      );
+      expect(models).toEqual([{ id: "gemini-2.0-flash" }]);
+      expect(fetchMock).toHaveBeenCalledWith("https://example.com/v1beta/models?key=key");
     });
   });
 
-  describe("pickDefaultModel", () => {
-    it("prefers a gpt- chat model over other entries", () => {
+  describe("pickDefaultGeminiModel", () => {
+    it("prefers a flash model when present", () => {
       expect(
-        pickDefaultModel([{ id: "text-embedding-3-small" }, { id: "gpt-4o-mini" }]),
-      ).toBe("gpt-4o-mini");
+        pickDefaultGeminiModel([{ id: "gemini-2.0-pro" }, { id: "gemini-2.0-flash" }]),
+      ).toBe("gemini-2.0-flash");
     });
 
-    it("excludes embedding/whisper/tts/moderation/dall-e models", () => {
+    it("falls back to a pro model when no flash model exists", () => {
+      expect(pickDefaultGeminiModel([{ id: "gemini-2.0-pro" }])).toBe("gemini-2.0-pro");
+    });
+
+    it("excludes embedding/vision/tts variants", () => {
       expect(
-        pickDefaultModel([
-          { id: "text-embedding-3-small" },
-          { id: "whisper-1" },
-          { id: "gpt-4o-mini" },
+        pickDefaultGeminiModel([
+          { id: "text-embedding-004" },
+          { id: "gemini-2.0-flash" },
         ]),
-      ).toBe("gpt-4o-mini");
+      ).toBe("gemini-2.0-flash");
     });
 
-    it("falls back to the first remaining candidate when no gpt- model exists", () => {
-      expect(pickDefaultModel([{ id: "o1-mini" }])).toBe("o1-mini");
+    it("avoids experimental/preview models unless nothing else qualifies", () => {
+      expect(pickDefaultGeminiModel([{ id: "gemini-2.0-flash-exp" }])).toBe(
+        "gemini-2.0-flash-exp",
+      );
+      expect(
+        pickDefaultGeminiModel([
+          { id: "gemini-2.0-flash-exp" },
+          { id: "gemini-2.0-flash" },
+        ]),
+      ).toBe("gemini-2.0-flash");
     });
 
     it("returns null for an empty list", () => {
-      expect(pickDefaultModel([])).toBeNull();
+      expect(pickDefaultGeminiModel([])).toBeNull();
     });
   });
 });

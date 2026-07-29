@@ -33,7 +33,7 @@ describe("parseInputs", () => {
       commentMode: "update-existing",
       reportPath: "biotrace-report.json",
       aiEnabled: "auto",
-      aiProvider: "openai-compatible",
+      aiProvider: ["openai-compatible"],
       aiModel: "",
       aiBaseUrl: "",
       aiKeyEnv: "BIOTRACE_AI_API_KEY",
@@ -48,7 +48,7 @@ describe("parseInputs", () => {
     process.env["INPUT_COMMENT-MODE"] = "disabled";
     process.env["INPUT_REPORT-PATH"] = "out.json";
     process.env["INPUT_AI-ENABLED"] = "true";
-    process.env["INPUT_AI-PROVIDER"] = "custom-provider";
+    process.env["INPUT_AI-PROVIDER"] = "anthropic, gemini";
     process.env["INPUT_AI-MODEL"] = "gpt-4o-mini";
     process.env["INPUT_AI-BASE-URL"] = "https://example.com/v1";
     process.env["INPUT_AI-KEY-ENV"] = "MY_KEY";
@@ -60,7 +60,7 @@ describe("parseInputs", () => {
     expect(inputs.commentMode).toBe("disabled");
     expect(inputs.reportPath).toBe("out.json");
     expect(inputs.aiEnabled).toBe("true");
-    expect(inputs.aiProvider).toBe("custom-provider");
+    expect(inputs.aiProvider).toEqual(["anthropic", "gemini"]);
     expect(inputs.aiModel).toBe("gpt-4o-mini");
     expect(inputs.aiBaseUrl).toBe("https://example.com/v1");
     expect(inputs.aiKeyEnv).toBe("MY_KEY");
@@ -79,5 +79,15 @@ describe("parseInputs", () => {
   it("rejects an invalid ai-enabled value", () => {
     process.env["INPUT_AI-ENABLED"] = "maybe";
     expect(() => parseInputs()).toThrow(/Invalid ai-enabled/);
+  });
+
+  it("rejects an unknown ai-provider value", () => {
+    process.env["INPUT_AI-PROVIDER"] = "custom-provider";
+    expect(() => parseInputs()).toThrow(/Invalid ai-provider/);
+  });
+
+  it("parses a comma-separated ai-provider priority list", () => {
+    process.env["INPUT_AI-PROVIDER"] = "anthropic,openai-compatible";
+    expect(parseInputs().aiProvider).toEqual(["anthropic", "openai-compatible"]);
   });
 });
