@@ -34,7 +34,7 @@
     "zod": "^4.6.5"
   },
   "overrides": {
-    "undici": "^6.29.0"
+    "undici": "^6.29.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
